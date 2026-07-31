@@ -1,0 +1,2 @@
+# seatleAihack
+Seattle AI hackathon
