@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Human-in-the-Loop Action System</title>
+  <style>
+    :root {
+      --primary: #2563eb;
+      --primary-dark: #1d4ed8;
+      --bg: #f8fafc;
+      --card-bg: #ffffff;
+      --text: #0f172a;
+      --text-muted: #64748b;
+      --border: #e2e8f0;
+      --approved: #10b981;
+      --rejected: #ef4444;
+      --editing: #3b82f6;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+    body { background-color: var(--bg); color: var(--text); padding: 24px 16px; max-width: 900px; margin: 0 auto; }
+    
+    header { margin-bottom: 24px; }
+    header h1 { font-size: 1.8rem; color: var(--text); }
+    header p { color: var(--text-muted); font-size: 0.95rem; }
+
+    .section-card {
+      background: var(--card-bg); border: 1px solid var(--border);
+      border-radius: 12px; padding: 20px; margin-bottom: 24px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    }
+
+    .section-title { font-size: 1.1rem; font-weight: 600; margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between; }
+    
+    textarea {
+      width: 100%; height: 100px; padding: 12px;
+      border: 1px solid var(--border); border-radius: 8px;
+      font-size: 0.95rem; margin-bottom: 12px; resize: vertical;
+    }
+
+    button {
+      padding: 8px 14px; border-radius: 6px; border: 1px solid var(--border);
+      background: var(--card-bg); color: var(--text); font-weight: 600; cursor: pointer;
+      transition: all 0.2s ease; font-size: 0.85rem;
+    }
+    button:hover { background: #f1f5f9; }
+    button.primary { background: var(--primary); color: white; border-color: var(--primary); }
+    button.primary:hover { background: var(--primary-dark); }
+
+    .task-card {
+      background: var(--card-bg); border: 1px solid var(--border);
+      border-radius: 8px; padding: 16px; margin-bottom: 12px;
+      display: flex; flex-direction: column; gap: 10px;
+      transition: border-color 0.2s ease;
+    }
+    .task-card.is-editing {
+      border-color: var(--editing);
+      box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
+    }
+
+    .task-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+    .task-title { font-weight: 600; font-size: 1rem; flex-grow: 1; }
+    
+    input.task-title-input {
+      font-weight: 600; font-size: 1rem; width: 100%; padding: 4px 8px;
+      border: 1px solid var(--editing); border-radius: 4px;
+    }
+
+    .badge { font-size: 0.75rem; padding: 4px 8px; border-radius: 12px; font-weight: 700; text-transform: uppercase; white-space: nowrap; }
+    .badge.pending { background: #fef3c7; color: #b45309; }
+    .badge.approved { background: #d1fae5; color: #047857; }
+    .badge.rejected { background: #fee2e2; color: #b91c1c; }
+    .badge.editing { background: #dbeafe; color: #1e40af; }
+
+    .safety-warning {
+      background: #fffbebf8; border: 1px solid #fcd34d; color: #92400e;
+      border-radius: 6px; padding: 8px 12px; font-size: 0.85rem; font-weight: 500;
+    }
+
+    .rec-display {
+      padding: 8px 10px; border: 1px solid var(--border);
+      border-radius: 6px; font-size: 0.88rem; color: #334155; background: #f8fafc;
+    }
+
+    input.rec-input {
+      width: 100%; padding: 8px 10px; border: 1px solid var(--editing);
+      border-radius: 6px; font-size: 0.88rem; color: #0f172a; background: #ffffff;
+    }
+
+    .task-actions { display: flex; gap: 8px; justify-content: flex-end; }
+    
+    .btn-approve { border-color: var(--approved); color: var(--approved); }
+    .btn-approve:hover { background: #d1fae5; }
+    
+    .btn-edit { border-color: var(--editing); color: var(--editing); }
+    .btn-edit:hover { background: #dbeafe; }
+    
+    .btn-save { background: var(--editing); color: white; border-color: var(--editing); }
+    .btn-save:hover { background: #2563eb; }
+
+    .btn-reject { border-color: var(--rejected); color: var(--rejected); }
+    .btn-reject:hover { background: #fee2e2; }
+
+    .log-list { list-style: none; max-height: 180px; overflow-y: auto; font-family: monospace; font-size: 0.85rem; }
+    .log-item { padding: 6px 0; border-bottom: 1px solid #f1f5f9; color: var(--text-muted); }
+    .log-timestamp { color: var(--primary); font-weight: 600; margin-right: 8px; }
+  </style>
+</head>
+<body>
+
+  <header>
+    <h1>Human-in-the-Loop Action System</h1>
+    <p>AI Action Queue with Mandatory Human Review, Edit Controls & Safety Auditing</p>
+  </header>
+
+  <!-- 1. USER REQUEST LAYER -->
+  <section class="section-card">
+    <div class="section-title">1. User Request (Tasks / Notes)</div>
+    <textarea id="task-input" placeholder="Enter tasks or paste notes here...&#10;e.g.&#10;1. Schedule team sync&#10;2. Send SSN 123-45-6789 to payroll&#10;3. Install heavy server rack cables"></textarea>
+    <button class="primary" onclick="processInput()">Generate Drafts & Recommendations</button>
+  </section>
+
+  <!-- 2 & 3. AI DRAFT, SAFETY CHECK & HUMAN REVIEW LAYERS -->
+  <section class="section-card">
+    <div class="section-title">
+      2 & 3. AI Draft Queue & Human Review
+      <span id="task-count" style="font-size: 0.85rem; color: var(--text-muted); font-weight: normal;">0 Items Pending</span>
+    </div>
+    <div id="task-container">
+      <p style="color: var(--text-muted); font-size: 0.9rem;">No action drafts in queue. Enter a request above.</p>
+    </div>
+  </section>
+
+  <!-- 4. ACTION LOG LAYER -->
+  <section class="section-card">
+    <div class="section-title">4. System Action Log & Decision Audit</div>
+    <ul id="action-log" class="log-list">
+      <li class="log-item"><span class="log-timestamp">[SYSTEM]</span> Control system initialized. Explicit Approve, Edit, and Reject triggers enabled.</li>
+    </ul>
+  </section>
+
+  <script>
+    let tasks = [];
+
+    // Safety Guardrail Engine
+    function runSafetyCheck(text) {
+      const lower = text.toLowerCase();
+      if (/\b\d{3}-\d{2}-\d{4}\b/.test(text) || lower.includes("ssn") || lower.includes("password") || lower.includes("credit card")) {
+        return { flagged: true, label: "⚠️ PRIVATE INFO WARNING: Sensitive credentials or SSN detected. Encryption required." };
+      }
+      if (lower.includes("cable") || lower.includes("hardware") || lower.includes("heavy") || lower.includes("machinery")) {
+        return { flagged: true, label: "⚠️ PHYSICAL HAZARD RISK: Physical hardware/labor task detected. Manual clearance required." };
+      }
+      return { flagged: false, label: "" };
+    }
+
+    // Recommendation Draft Generator
+    function generateRecommendation(title) {
+      const lower = title.toLowerCase();
+      if (lower.includes("email") || lower.includes("send")) return "Draft key outline and double-check recipient address before approval.";
+      if (lower.includes("schedule") || lower.includes("meeting")) return "Prepare a 3-point agenda and set a 30-minute calendar block.";
+      return "Break down into sub-actions and complete during high-focus hours.";
+    }
+
+    // Process Input -> AI Draft Stage
+    function processInput() {
+      const input = document.getElementById('task-input').value.trim();
+      if (!input) return;
+
+      const lines = input.split('\n').filter(line => line.trim() !== "");
+      tasks = lines.map((line, idx) => {
+        const cleanTitle = line.replace(/^[\d\.\-\*\s]+/, '').trim();
+        return {
+          id: Date.now() + idx,
+          title: cleanTitle,
+          recommendation: generateRecommendation(cleanTitle),
+          safety: runSafetyCheck(cleanTitle),
+          status: "Pending",
+          isEditing: false
+        };
+      });
+
+      logAction(`[AI DRAFT GENERATED] Created ${tasks.length} pending action draft(s).`);
+      renderTasks();
+    }
+
+    // Render Drafts with Approve, Edit, and Reject Controls
+    function renderTasks() {
+      const container = document.getElementById('task-container');
+      const pendingCount = tasks.filter(t => t.status === "Pending").length;
+      document.getElementById('task-count').textContent = `${pendingCount} Pending Item(s)`;
+
+      if (tasks.length === 0) {
+        container.innerHTML = `<p style="color: var(--text-muted); font-size: 0.9rem;">No action drafts in queue. Enter a request above.</p>`;
+        return;
+      }
+
+      container.innerHTML = '';
+      tasks.forEach((t, index) => {
+        const card = document.createElement('div');
+        card.className = `task-card ${t.isEditing ? 'is-editing' : ''}`;
+        
+        let safetyHTML = t.safety.flagged ? `<div class="safety-warning">${t.safety.label}</div>` : '';
+
+        if (t.isEditing) {
+          // Editing View Mode
+          card.innerHTML = `
+            <div class="task-header">
+              <input type="text" id="edit-title-${index}" class="task-title-input" value="${t.title}">
+              <span class="badge editing">Editing</span>
+            </div>
+            ${safetyHTML}
+            <input type="text" id="edit-rec-${index}" class="rec-input" value="${t.recommendation}">
+            <div class="task-actions">
+              <button class="btn-save" onclick="saveEdit(${index})">Save Changes</button>
+              <button onclick="cancelEdit(${index})">Cancel</button>
+            </div>
+          `;
+        } else {
+          // Normal View Mode
+          card.innerHTML = `
+            <div class="task-header">
+              <span class="task-title">${t.title}</span>
+              <span class="badge ${t.status.toLowerCase()}">${t.status}</span>
+            </div>
+            ${safetyHTML}
+            <div class="rec-display">${t.recommendation}</div>
+            <div class="task-actions">
+              <button class="btn-approve" onclick="approveTask(${index})">Approve</button>
+              <button class="btn-edit" onclick="enableEdit(${index})">Edit</button>
+              <button class="btn-reject" onclick="rejectTask(${index})">Reject</button>
+            </div>
+          `;
+        }
+
+        container.appendChild(card);
+      });
+    }
+
+    // Explicit Control Handlers
+    function enableEdit(index) {
+      tasks[index].isEditing = true;
+      renderTasks();
+    }
+
+    function saveEdit(index) {
+      const newTitle = document.getElementById(`edit-title-${index}`).value.trim();
+      const newRec = document.getElementById(`edit-rec-${index}`).value.trim();
+
+      const titleChanged = tasks[index].title !== newTitle;
+      const recChanged = tasks[index].recommendation !== newRec;
+
+      if (titleChanged || recChanged) {
+        tasks[index].title = newTitle;
+        tasks[index].recommendation = newRec;
+        tasks[index].safety = runSafetyCheck(newTitle); // Re-run safety guardrails on modified text
+        logAction(`[HUMAN EDIT] Saved updates for Task #${index + 1}: Title = "${newTitle}", Rec = "${newRec}"`);
+      }
+
+      tasks[index].isEditing = false;
+      renderTasks();
+    }
+
+    function cancelEdit(index) {
+      tasks[index].isEditing = false;
+      renderTasks();
+    }
+
+    function approveTask(index) {
+      tasks[index].status = "Approved";
+      tasks[index].isEditing = false;
+      const riskFlag = tasks[index].safety.flagged ? " [RISK ACKNOWLEDGED]" : "";
+      logAction(`[DECISION: APPROVED] Task #${index + 1}: "${tasks[index].title}"${riskFlag}`);
+      renderTasks();
+    }
+
+    function rejectTask(index) {
+      tasks[index].status = "Rejected";
+      tasks[index].isEditing = false;
+      logAction(`[DECISION: REJECTED] Task #${index + 1}: "${tasks[index].title}" marked as rejected.`);
+      renderTasks();
+    }
+
+    function logAction(message) {
+      const logList = document.getElementById('action-log');
+      const timeStr = new Date().toLocaleTimeString();
+      const li = document.createElement('li');
+      li.className = 'log-item';
+      li.innerHTML = `<span class="log-timestamp">[${timeStr}]</span> ${message}`;
+      logList.prepend(li);
+    }
+  </script>
+</body>
+</html>
